@@ -95,8 +95,7 @@ var authorize = function() {
     type: "popup",
     name: "Trello Activity Report",
     scope: {
-      read: true,
-      write: true },
+      read: true },
     expiration: "never",
     success: authenticationSuccess,
     error: authenticationFailure
