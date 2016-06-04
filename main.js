@@ -1,4 +1,6 @@
 var idMember;
+var members = {};  // id => name
+var boards = {};  // id => name
 
 Date.prototype.toString = function () { 
     return this.getUTCFullYear() +"-"+(((this.getUTCMonth()+1) < 10)?"0":"") + (this.getUTCMonth()+1) +"-"+ ((this.getUTCDate() < 10)?"0":"") + this.getUTCDate();
@@ -31,60 +33,7 @@ var hours_minutes = function(milliseconds) {
 var authenticationSuccess = function() {
   Trello.get('/tokens/' + Trello.token(), {}, function(data) {
     idMember = data.idMember;
-    var now = new Date();
-    var yesterday = new Date(now - 1000*3600*24*1);
-    var params = {
-      limit: 1000,
-      memberCreator: 'false',
-      member_fields: 'fullName',
-      since: yesterday.toString(),
-      fields: 'type,date,data',
-      filter: 'addMemberToCard,removeMemberFromCard'
-    };
-    Trello.get('/members/' + idMember + '/actions', params, function(data) {
-      var cards = [];
-      var incomplete_actions = {};
-      for (var i=0; i<data.length; i++) {
-        var matched = false;
-        for (idAction in incomplete_actions) {
-          if ((data[i]['type'] != incomplete_actions[idAction]['type']) && (data[i]['data']['card']['id'] == incomplete_actions[idAction]['data']['card']['id'])) {
-            matched = true;
-            var add_time = new Date(data[i]['date']);
-            var remove_time = new Date(incomplete_actions[idAction]['date']);
-            cards.push({
-              duration: remove_time - add_time, // in milliseconds
-              name: data[i]['data']['card']['name'],
-              data: data[i]['data']['card']
-            });
-            delete incomplete_actions[idAction];
-          }
-        }
-        if (!matched) {
-          incomplete_actions[data[i]['id']] = data[i];
-        }
-      }
-      // show
-      var report__cards = "";
-      var report__unfinished = "";
-      for (idAction in incomplete_actions) {
-        if (incomplete_actions[idAction]['type'] == 'addMemberToCard') {
-          report__unfinished += 'Started working on ' + incomplete_actions[idAction]['data']['card']['name'] + '\n';
-        }
-        else {
-          report__unfinished += 'Finished with ' + incomplete_actions[idAction]['data']['card']['name'] + '\n';
-        }
-      }
-      var total_duration = 0;
-      for (var i=cards.length-1; i>=0; i--) {
-        report__cards += '[' + human_format(cards[i].duration) + '] ' + cards[i].name + '\n';
-        total_duration += cards[i].duration;
-      }
-
-      document.getElementById('header').setAttribute('style', 'display: none;');
-      document.getElementById('report__cards').innerHTML = report__cards;
-      document.getElementById('report__unfinished').innerHTML = report__unfinished;
-      document.getElementById('report__total').innerHTML = hours_minutes(total_duration);
-    });
+    load_activity(idMember);
   });
 };
 
@@ -99,5 +48,89 @@ var authorize = function() {
     expiration: "never",
     success: authenticationSuccess,
     error: authenticationFailure
+  });
+}
+
+var show_activity = function(element) {
+  load_activity(element.getAttribute('data-id'));
+}
+
+var load_activity = function(idMember) {
+  var now = new Date();
+  var yesterday = new Date(now - 1000*3600*24*1);
+  var params = {
+    limit: 1000,
+    memberCreator: 'false',
+    member_fields: 'fullName',
+    since: yesterday.toString(),
+    fields: 'type,date,data',
+    filter: 'addMemberToCard,removeMemberFromCard'
+  };
+  Trello.get('/members/' + idMember + '/actions', params, function(data) {
+    var cards = [];
+    var incomplete_actions = {};
+    for (var i=0; i<data.length; i++) {
+      var matched = false;
+      for (idAction in incomplete_actions) {
+        if ((data[i]['type'] != incomplete_actions[idAction]['type']) && (data[i]['data']['card']['id'] == incomplete_actions[idAction]['data']['card']['id'])) {
+          matched = true;
+          var add_time = new Date(data[i]['date']);
+          var remove_time = new Date(incomplete_actions[idAction]['date']);
+          cards.push({
+            duration: remove_time - add_time, // in milliseconds
+            name: data[i]['data']['card']['name'],
+            data: data[i]['data']['card']
+          });
+          delete incomplete_actions[idAction];
+        }
+      }
+      if (!matched) {
+        incomplete_actions[data[i]['id']] = data[i];
+      }
+
+      // get the board, store it if it's a new board
+      if (boards[data[i].data.board.id] === undefined) {
+        boards[data[i].data.board.id] = data[i].data.board.name;
+      }
+    }
+    // show
+    var report__cards = "";
+    var report__unfinished = "";
+    for (idAction in incomplete_actions) {
+      if (incomplete_actions[idAction]['type'] == 'addMemberToCard') {
+        report__unfinished += 'Started working on ' + incomplete_actions[idAction]['data']['card']['name'] + '\n';
+      }
+      else {
+        report__unfinished += 'Finished with ' + incomplete_actions[idAction]['data']['card']['name'] + '\n';
+      }
+    }
+    var total_duration = 0;
+    for (var i=cards.length-1; i>=0; i--) {
+      report__cards += '[' + human_format(cards[i].duration) + '] ' + cards[i].name + '\n';
+      total_duration += cards[i].duration;
+    }
+
+    document.getElementById('header').setAttribute('style', 'display: none;');
+    document.getElementById('report__cards').innerHTML = report__cards;
+    document.getElementById('report__unfinished').innerHTML = report__unfinished;
+    document.getElementById('report__total').innerHTML = hours_minutes(total_duration);
+
+    // show which activity it is
+    if (members[idMember] !== undefined) {
+      document.getElementById('title').innerHTML = members[idMember];
+    }
+
+    for (board_id in boards) {
+      // get all members for this board
+      Trello.get('/boards/' + board_id + '/members', {}, function(data) {
+        for (var i=0; i<data.length; i++) {
+          if (members[data[i].id] === undefined) {
+            members[data[i].id] = data[i].fullName;
+            console.log("Found member: ", data[i].fullName);
+            document.getElementById('buttons').innerHTML += '<button onClick="show_activity(this)" data-id="' + data[i].id + '">' + data[i].fullName + '</button>'; 
+          }
+        }
+      });
+    }
   });
 }
