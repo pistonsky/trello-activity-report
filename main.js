@@ -111,6 +111,7 @@ var load_activity = function(idMember, date_from, date_to, title) {
 
     document.getElementById('header').setAttribute('style', 'display: none;');
     document.getElementById('report').setAttribute('style', 'display: flex;');
+    document.getElementById('title').innerHTML = title;
     document.getElementById('report__cards').innerHTML = report__cards;
     document.getElementById('report__unfinished').innerHTML = report__unfinished;
     document.getElementById('report__total').innerHTML = hours_minutes(total_duration);
