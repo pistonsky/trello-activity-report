@@ -30,23 +30,23 @@ var hours_minutes = function(milliseconds) {
   }
 }
 
-var authenticationSuccess = function() {
+var authenticationSuccess = function(date_from, date_to) {
   Trello.get('/tokens/' + Trello.token(), {}, function(data) {
     idMember = data.idMember;
-    load_activity(idMember);
+    load_activity(idMember, date_from, date_to);
   });
 };
 
 var authenticationFailure = function() { console.log("Failed authentication"); };
 
-var authorize = function() {
+var load_report = function(date_from, date_to) {
   Trello.authorize({
     type: "popup",
     name: "Trello Activity Report",
     scope: {
       read: true },
     expiration: "never",
-    success: authenticationSuccess,
+    success: function(){return authenticationSuccess(date_from, date_to);},
     error: authenticationFailure
   });
 }
@@ -55,14 +55,13 @@ var show_activity = function(element) {
   load_activity(element.getAttribute('data-id'));
 }
 
-var load_activity = function(idMember) {
-  var now = new Date();
-  var yesterday = new Date(now - 1000*3600*24*1);
+var load_activity = function(idMember, date_from, date_to) {
   var params = {
     limit: 1000,
     memberCreator: 'false',
     member_fields: 'fullName',
-    since: yesterday.toString(),
+    since: date_from.toString(),
+    before: date_to.toString(),
     fields: 'type,date,data',
     filter: 'addMemberToCard,removeMemberFromCard'
   };
@@ -111,6 +110,7 @@ var load_activity = function(idMember) {
     }
 
     document.getElementById('header').setAttribute('style', 'display: none;');
+    document.getElementById('report').setAttribute('style', 'display: flex;');
     document.getElementById('report__cards').innerHTML = report__cards;
     document.getElementById('report__unfinished').innerHTML = report__unfinished;
     document.getElementById('report__total').innerHTML = hours_minutes(total_duration);
@@ -133,4 +133,25 @@ var load_activity = function(idMember) {
       });
     }
   });
+}
+
+var load_yesterday_activity = function() {
+  var now = new Date();
+  var date_from = new Date(now - (((24 + now.getHours()) * 60 + now.getMinutes()) * 60 + now.getSeconds()) * 1000 + now.getMilliseconds());
+  var date_to = new Date(now - ((now.getHours() * 60 + now.getMinutes()) * 60 + now.getSeconds()) * 1000 + now.getMilliseconds());
+  load_report(date_from, date_to);
+}
+
+var load_this_week_activity = function() {
+  var now = new Date();
+  var date_from = new Date(now - ((((now.getDay() * 24 + now.getHours()) * 60 + now.getMinutes()) * 60 + now.getSeconds()) * 1000 + now.getMilliseconds()));
+  var date_to = new Date();
+  load_report(date_from, date_to);
+}
+
+var load_this_month_activity = function() {
+  var now = new Date();
+  var date_from = new Date(now - (((((now.getDate() - 1) * 24 + now.getHours()) * 60 + now.getMinutes()) * 60 + now.getSeconds()) * 1000 + now.getMilliseconds()));
+  var date_to = new Date();
+  load_report(date_from, date_to);
 }

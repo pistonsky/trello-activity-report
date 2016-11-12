@@ -22,12 +22,14 @@ body {
 	display: flex;
 	justify-content: center;
 	align-items: center;
+	flex-direction: column;
 }
 
 #header button {
-	width: 400px;
+	width: 200px;
 	height: 40px;
 	padding: 10px;
+	margin: 10px;
 
 	font-size: 20px;
 	border: none;
@@ -54,10 +56,12 @@ body {
 </style>
 
 <div id="header">
-	<button onClick="authorize()" style="margin: 0 auto">Show My Yesterday Trello Activity</button>
+	<button onClick="load_yesterday_activity()">Yesterday</button>
+	<button onClick="load_this_week_activity()">This Week</button>
+	<button onClick="load_last_week_activity()">Last Week</button>
 </div>
 
-<div id="report" style="word-wrap:pre">
+<div id="report" style="word-wrap:pre;display:none">
 	<div id="buttons"></div>
 	<h1 id="title">Yesterday</h1>
 	<div id="report__cards"></div>
