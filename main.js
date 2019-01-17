@@ -1,6 +1,11 @@
 var idMember;
 var members = {};  // id => name
 var boards = {};  // id => name
+var state = {
+  date_from: null,
+  date_to: null,
+  title: null
+};
 
 Date.prototype.toString = function () { 
     return this.getUTCFullYear() +"-"+(((this.getUTCMonth()+1) < 10)?"0":"") + (this.getUTCMonth()+1) +"-"+ ((this.getUTCDate() < 10)?"0":"") + this.getUTCDate();
@@ -10,7 +15,19 @@ var human_format = function(milliseconds) {
   var minutes = ~~(milliseconds / 1000 / 60);  // whole number division
   var m = minutes % 60;
   var h = (minutes - m) / 60;
-  return ((h<10)?"0":"") + h + ":" + ((m<10)?"0":"") + m;
+  var days = ~~(h / 24)
+  if (days === 0) {
+    return ((h<10)?"0":"") + h + ":" + ((m<10)?"0":"") + m;
+  } else {
+    h = h - days * 24
+    var result = `${days} `
+    if (days === 1) {
+      result += "day"
+    } else {
+      result += "days"
+    }
+    return `${result}, ` + ((h<10)?"0":"") + h + ":" + ((m<10)?"0":"") + m;
+  }
 }
 
 var hours_minutes = function(milliseconds) {
@@ -40,6 +57,9 @@ var authenticationSuccess = function(date_from, date_to, title) {
 var authenticationFailure = function() { console.log("Failed authentication"); };
 
 var load_report = function(date_from, date_to, title) {
+  state.date_from = date_from
+  state.date_to = date_to
+  state.title = title
   Trello.authorize({
     type: "popup",
     name: "Trello Activity Report",
@@ -52,7 +72,8 @@ var load_report = function(date_from, date_to, title) {
 }
 
 var show_activity = function(element) {
-  load_activity(element.getAttribute('data-id'));
+  const idMember = element.getAttribute('data-id')
+  load_activity(idMember, state.date_from, state.date_to, state.title);
 }
 
 var load_activity = function(idMember, date_from, date_to, title) {
@@ -63,43 +84,50 @@ var load_activity = function(idMember, date_from, date_to, title) {
     since: date_from.toString(),
     before: date_to.toString(),
     fields: 'type,date,data',
-    filter: 'addMemberToCard,removeMemberFromCard'
+    filter: 'updateCard'
   };
   Trello.get('/members/' + idMember + '/actions', params, function(data) {
     var cards = [];
     var incomplete_actions = {};
-    for (var i=0; i<data.length; i++) {
+    for (var i=data.length-1; i>=0; i--) {
       var matched = false;
-      for (idAction in incomplete_actions) {
-        if ((data[i]['type'] != incomplete_actions[idAction]['type']) && (data[i]['data']['card']['id'] == incomplete_actions[idAction]['data']['card']['id'])) {
-          matched = true;
-          var add_time = new Date(data[i]['date']);
-          var remove_time = new Date(incomplete_actions[idAction]['date']);
-          cards.push({
-            duration: remove_time - add_time, // in milliseconds
-            name: data[i]['data']['card']['name'],
-            data: data[i]['data']['card']
-          });
-          delete incomplete_actions[idAction];
+      if (data[i].data.listBefore && data[i].data.listAfter) { // only care about moving cards between lists
+        if (data[i].data.listBefore.name === 'In Progress') { // moving out of "In Progress" means: stopped working on it
+          for (idAction in incomplete_actions) { // when did I start to work on it? Find a matching card.
+            if (
+              (data[i].data.card.id === incomplete_actions[idAction].data.card.id) // same card
+              && (incomplete_actions[idAction].data.listAfter.name === 'In Progress') // moved to "In Progress" means: started to work on it
+            ) {
+              matched = true;
+              var stopped_working = new Date(data[i]['date']);
+              var started_working = new Date(incomplete_actions[idAction]['date']);
+              cards.push({
+                duration: stopped_working - started_working, // in milliseconds
+                name: data[i]['data']['card']['name'],
+                data: data[i]['data']['card']
+              });
+              delete incomplete_actions[idAction];
+            }
+          }
         }
-      }
-      if (!matched) {
-        incomplete_actions[data[i]['id']] = data[i];
-      }
+        if (!matched) {
+          incomplete_actions[data[i]['id']] = data[i];
+        }
 
-      // get the board, store it if it's a new board
-      if (boards[data[i].data.board.id] === undefined) {
-        boards[data[i].data.board.id] = data[i].data.board.name;
+        // get the board, store it if it's a new board
+        if (boards[data[i].data.board.id] === undefined) {
+          boards[data[i].data.board.id] = data[i].data.board.name;
+        }
       }
     }
     // show
     var report__cards = "";
     var report__unfinished = "";
     for (idAction in incomplete_actions) {
-      if (incomplete_actions[idAction]['type'] == 'addMemberToCard') {
+      if (incomplete_actions[idAction].data.listAfter.name == 'In Progress') {
         report__unfinished += 'Started working on ' + incomplete_actions[idAction]['data']['card']['name'] + '\n';
       }
-      else {
+      else if (incomplete_actions[idAction].data.listBefore.name == 'In Progress') {
         report__unfinished += 'Finished with ' + incomplete_actions[idAction]['data']['card']['name'] + '\n';
       }
     }
@@ -127,7 +155,6 @@ var load_activity = function(idMember, date_from, date_to, title) {
         for (var i=0; i<data.length; i++) {
           if (members[data[i].id] === undefined) {
             members[data[i].id] = data[i].fullName;
-            console.log("Found member: ", data[i].fullName);
             document.getElementById('buttons').innerHTML += '<button onClick="show_activity(this)" data-id="' + data[i].id + '">' + data[i].fullName + '</button>'; 
           }
         }
